@@ -5,12 +5,14 @@
 
 (local tests {})
 
+(var set-keys nil)
+
 (macro == [a b ?msg]
   `(t.= ,a ,b ,?msg))
 
 (macro test [test-name [machine-name] ...]
   `(fn ,(sym (.. :tests.test- test-name)) []
-    (let [,machine-name (M.new)]
+    (let [,machine-name (M.new {:devices {:keyboard #(set ,(sym :set-keys) $1)}})]
       ,...)))
 
 (test :new [m]
@@ -398,12 +400,24 @@
 (test :skp-vx [m]
   "Skip the following instruction if the key corresponding to the hex value currently stored in register VX is pressed"
   ;; EX9E
-  nil)
+  (m:write-register 0 0x8)
+  (set-keys (bit.lshift 1 8))
+  (m:write-words 0x200 [0xE09E 0x0000 0xEF9E])
+  (m:step)
+  (== 0x0204 m.pc "skipped one instruction")
+  (m:step)
+  (== 0x0206 m.pc "did not skip"))
 
 (test :sknp-vx [m]
   "Skip the following instruction if the key corresponding to the hex value currently stored in register VX is not pressed"
   ;; EXA1
-  nil)
+  (m:write-register 0 0x8)
+  (set-keys (bit.lshift 1 8))
+  (m:write-words 0x200 [0xEFA1 0x0000 0xE0A1])
+  (m:step)
+  (== 0x0204 m.pc "skipped one instruction")
+  (m:step)
+  (== 0x0206 m.pc "did not skip"))
 
 (test :ld-vx-dt [m]
   "Store the current value of the delay timer in register VX"
@@ -417,7 +431,15 @@
 (test :ld-vx-k [m]
   "Wait for a keypress and store the result in register VX"
   ;; FX0A
-  nil)
+  (m:write-register 0 0x8)
+  (m:write-words 0x200 [0xF00A])
+  (m:step)
+  (== 0x200 m.pc)
+  (m:step)
+  (== 0x200 m.pc "is suspended")
+  (set-keys (bit.lshift 1 8))
+  (m:step)
+  (== 0x202 m.pc "did unsuspend"))
 
 (test :ld-dt-vx [m]
   "Set the delay timer to the value of register VX"
@@ -472,10 +494,10 @@
   (m:write-words 0x200 [0xF029 0x1200])
   (m:write-register 0 0x0)
   (m:step) (m:step)
-  (== (+ 0x18 0x0) (m:read-index))
+  (== (+ 0x50 0x0) (m:read-index))
   (m:write-register 0 0x8)
   (m:step) (m:step)
-  (== (+ 0x18 0x8) (m:read-index)))
+  (== (+ 0x50 0x8) (m:read-index)))
 
 (test :ld-b-vx [m]
   "Store the binary-coded decimal equivalent of the value stored in register VX at addresses I, I + 1, and I + 2"

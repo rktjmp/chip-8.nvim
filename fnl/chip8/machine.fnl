@@ -4,13 +4,20 @@
 (local {: write-bytes : read-bytes
         : nibbles->word : word->nibbles} (require :chip8.memory))
 
-    (local bootloader [0x59 0x4f 0x55 0x20
-                       0x43 0x41 0x4e 0x20
-                       0x50 0x4c 0x41 0x59
-                       0x20 0x57 0x49 0x54
-                       0x48 0x20 0x55 0x53
-                       0x00 0x00 0x00 0x00])
-    (local font-mem-loc 0x18)
+(local bootloader [0x59 0x4f 0x55 0x20
+                   0x43 0x41 0x4e 0x20
+                   0x50 0x4c 0x41 0x59
+                   0x20 0x57 0x49 0x54
+                   0x48 0x20 0x55 0x53
+                   0x00 0x00 0x00 0x00])
+
+(local font-mem-loc 0x0050) ;; - 0x009f
+(local keyboard-mem-loc 0x100)
+
+(fn tobin [n len]
+  (faccumulate [s "" i 0 (- len 1)]
+    (let [b (-> (bit.rshift n i) (bit.band 0x1))]
+      (.. b s))))
 
 (fn dump-memory [memory ?offset ?len]
   (let [start (or ?offset 0)
@@ -295,17 +302,25 @@
           (update-video-byte mem-loc-2 right-byte))))
     (machine:inc-pc)))
 
-(fn SKP-VX []
+(fn SKP-VX [machine vx]
   "Skip the following instruction if the key corresponding to the hex value currently stored in register VX is pressed"
   ;; EX9E
-  (error "keyboard not implemented")
-  )
+  (let [k (machine:read-register vx)
+        want-mask (bit.lshift 1 k)
+        [have-mask] (machine:read-words keyboard-mem-loc 1)
+        test (bit.band want-mask have-mask)]
+    (machine:inc-pc)
+    (if (< 0 test) (machine:inc-pc))))
 
-(fn SKNP-VX []
+(fn SKNP-VX [machine vx]
   "Skip the following instruction if the key corresponding to the hex value currently stored in register VX is not pressed"
   ;; EXA1
-  (error "keyboard not implemented")
-  )
+  (let [k (machine:read-register vx)
+        dont-want-mask (bit.lshift 1 k)
+        [have-mask] (machine:read-words keyboard-mem-loc 1)
+        test (bit.band dont-want-mask have-mask)]
+    (machine:inc-pc)
+    (if (= 0 test) (machine:inc-pc))))
 
 (fn LD-VX-DT [machine vx]
   "Store the current value of the delay timer in register VX"
@@ -313,11 +328,14 @@
   (machine:write-register vx machine.delay.t)
   (machine:inc-pc))
 
-(fn LD-VX-K []
+(fn LD-VX-K [machine vx]
   "Wait for a keypress and store the result in register VX"
   ;; FX0A
-  (error "keyboard not implemented")
-  )
+  (let [k (machine:read-register vx)
+        want-mask (bit.lshift 1 k)
+        [have-mask] (machine:read-words keyboard-mem-loc 1)
+        test (bit.band want-mask have-mask)]
+    (if (< 0 test) (machine:inc-pc))))
 
 (fn LD-DT-VX [machine vx]
   "Set the delay timer to the value of register VX"
@@ -470,11 +488,32 @@
                    (set timer.t (math.max 0 (- timer.t steps)))
                    (set last-ms (+ last-ms (* steps interval-ms))))))))})
 
-(λ new []
-  "Create a blank CHIP8 machine"
+(fn merge-table [t-into t-from]
+  ;; so we can do (or false x) and get false if the user wanted
+  (fn unless-nil  [x y] (if (= nil x) y x))
+  (accumulate [t t-into k v (pairs t-from)]
+    (case (type v)
+      :table (do
+               (assert (or (= nil (. t-into k)) (= :table (type (. t-into k))))
+                       (string.format "%s must be table or nil" k))
+               (doto t (tset k (merge-table (unless-nil (. t-into k) {}) v))))
+      _ (doto t (tset k (unless-nil (. t-into k) v))))))
+
+(λ new [?opts]
+  "Create a blank CHIP8 machine
+  
+  keyboard function: pass 1 16 bit word where each bit maps to a key, 0->F. if
+  a bit is on, the key is down. the first bit is key 0, the 16th bit is key f.
+  "
   (let [{:new new-memory
          : read-bytes : write-bytes
          : read-words : write-words} (require :chip8.memory)
+        defaults {:devices {:keyboard #nil
+                            :video #nil
+                            :audio #nil}
+                  :mhz 500
+                  :compatibility :CHIP8}
+        opts (merge-table (or ?opts {}) defaults)
         machine {:pc 0x0200
                  ;; Stack starts 2 past stack head, but the first push will -2 it.
                  :sp 0x0200
@@ -484,13 +523,13 @@
                  :v (new-memory 0xF)
                  :i (new-memory 0x2)
                  :memory (new-memory 0x1000)
+
                  ;; each byte of video memory is a 8-pixel strip, one bit per pixel
                  ;; so we can compress our width by 8, but our height is one byte
                  ;; per pixel.
                  :video (new-memory (* (/ 64 8) 32))
 
                  :rtc-ms 0x0
-
                  :delay (new-timer)
                  :sound (new-timer)
 
@@ -519,6 +558,11 @@
                  :read-bytes (fn [m ...] (read-bytes m.memory ...))
                  :read-words (fn [m ...] (read-words m.memory ...))
                  :write-words (fn [m ...] (write-words m.memory ...))}]
+
+    (opts.devices.keyboard (fn [key-word]
+                             (machine:write-words keyboard-mem-loc [key-word])))
+    (opts.devices.video (fn []
+                          (read-bytes machine.video (* 32 64))))
 
     (machine:write-bytes 0x0 bootloader)
     (machine:write-bytes font-mem-loc (font-bytes))
