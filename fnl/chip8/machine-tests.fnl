@@ -190,21 +190,21 @@
   (m:write-words m.pc [0x8125])
   (m:step)
   (== 0x30 (m:read-register 1))
-  (== 0x0 (m:read-register 0xF))
+  (== 0x1 (m:read-register 0xF))
 
   (m:write-register 1 0x40)
   (m:write-register 2 0x40)
   (m:write-words m.pc [0x8125])
   (m:step)
   (== 0x0 (m:read-register 1))
-  (== 0x0 (m:read-register 0xF))
+  (== 0x1 (m:read-register 0xF))
 
   (m:write-register 1 0x00)
   (m:write-register 2 0x40)
   (m:write-words m.pc [0x8125])
   (m:step)
-  (== 0x40 (m:read-register 1))
-  (== 0x1 (m:read-register 0xF)))
+  (== 0xC0 (m:read-register 1))
+  (== 0x0 (m:read-register 0xF)))
 
 (test :shr-vx-vy [m]
   "Store the value of register VY shifted right one bit in register VX, set VF to the least significant bit prior to the shift"
@@ -233,21 +233,21 @@
   (m:write-words m.pc [0x8127])
   (m:step)
   (== 0x30 (m:read-register 1))
-  (== 0x0 (m:read-register 0xF))
+  (== 0x1 (m:read-register 0xF))
 
   (m:write-register 1 0x40)
   (m:write-register 2 0x40)
   (m:write-words m.pc [0x8127])
   (m:step)
   (== 0x0 (m:read-register 1))
-  (== 0x0 (m:read-register 0xF))
+  (== 0x1 (m:read-register 0xF))
 
   (m:write-register 1 0x40)
   (m:write-register 2 0x00)
   (m:write-words m.pc [0x8127])
   (m:step)
-  (== 0x40 (m:read-register 1))
-  (== 0x1 (m:read-register 0xF)))
+  (== 0xC0 (m:read-register 1))
+  (== 0x0 (m:read-register 0xF)))
 
 (test :shl-vx-vy [m]
   "Store the value of register VY shifted left one bit in register VX, set VF to the most significant bit prior to the shift"

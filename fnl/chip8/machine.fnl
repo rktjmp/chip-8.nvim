@@ -177,10 +177,8 @@
   (let [x (machine:read-register vx)
         y (machine:read-register vy)
         sum (- x y)]
-    (machine:write-register 0xF (if (< sum 0) 1 0))
-    ;; TODO correct impl?
-    ; (machine:write-register vx (if (< sum 0) (+ sum 256)))
-    (machine:write-register vx (math.abs sum))
+    (machine:write-register vx (if (< sum 0) (+ sum 256) sum))
+    (machine:write-register 0xF (if (< sum 0) 0 1))
     (machine:inc-pc)))
 
 (fn SHR-VX-VY [machine vx vy]
@@ -199,10 +197,8 @@
   (let [x (machine:read-register vx)
         y (machine:read-register vy)
         sum (- y x)]
-    (machine:write-register 0xF (if (< sum 0) 1 0))
-    ;; TODO correct impl?
-    ; (machine:write-register vx (if (< sum 0) (+ sum 256)))
-    (machine:write-register vx (math.abs sum))
+    (machine:write-register vx (if (< sum 0) (+ sum 256) sum))
+    (machine:write-register 0xF (if (< sum 0) 0 1))
     (machine:inc-pc)))
 
 (fn SHL-VX-VY [machine vx vy]
