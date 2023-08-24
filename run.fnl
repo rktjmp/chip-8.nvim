@@ -21,6 +21,35 @@
       (table.insert lines str)))
   (-> (table.concat lines "\n") (print)))
 
+(fn half-block-draw [video-ram]
+  (let [all-bytes (read-bytes video-ram 0 (* (/ 64 8) 32))
+        ;; indexing by zero makes striding simpler
+        bit-list (accumulate [all {:idx 0} _ byte (ipairs all-bytes)]
+                   (do
+                     (for [bit-pos 0 7]
+                       (tset all all.idx (if (< 0 (-> (bit.lshift 1 (- 8 bit-pos 1))
+                                                      (bit.band byte 0xFF)))
+                                           1 0))
+                       (set all.idx (+ 1 all.idx)))
+                     all))
+        _ (set bit-list.idx nil)
+        bits-per-row 64
+        chars []]
+    (for [r 0 31 2] ; 32 rows, but we squeeze 2 rows per char
+      (for [c 0 63 1] ;; 64 cols, squeeze 1 per char
+        (let [b1 (. bit-list (+ (* (+ r 0) 64) c))
+              b2 (. bit-list (+ (* (+ r 1) 64) c))
+              c (case (values b1 b2)
+                  (0 0) " "
+                  (1 0) "▀"
+                  (0 1) "▄"
+                  (1 1) "█")]
+          (table.insert chars c))))
+    (let [lines (fcollect [row 0 (- (/ 32 2) 1)]
+                  (faccumulate [line "" col 0 (- (/ 64 1) 1)]
+                    (.. line (. chars (+ (* row (/ 64 1)) col 1)))))]
+      (print (table.concat lines "\n")))))
+
 (fn braille-draw [video-ram]
   (let [all-bytes (read-bytes video-ram 0 (* (/ 64 8) 32))
         ;; indexing by zero makes striding simpler
@@ -93,5 +122,6 @@
   (for [i 1 180]
     (m:step))
   (block-draw m.video)
+  (half-block-draw m.video)
   (braille-draw m.video))
 
