@@ -562,7 +562,9 @@
     (opts.devices.keyboard (fn [key-word]
                              (machine:write-words keyboard-mem-loc [key-word])))
     (opts.devices.video (fn []
-                          (read-bytes machine.video (* 32 64))))
+                          (values
+                            (read-bytes machine.video 0 machine.video.size)
+                            {:width 64 :height 32})))
 
     (machine:write-bytes 0x0 bootloader)
     (machine:write-bytes font-mem-loc (font-bytes))

@@ -8,21 +8,8 @@
     (let [b (-> (bit.rshift n i) (bit.band 0x1))]
       (.. b s))))
 
-(fn block-draw [video-ram]
-  (local lines [])
-  (for [row-num 0 31]
-    (let [row (read-bytes video-ram (* row-num (/ 64 8)) (/ 64 8))
-          str (accumulate [line (string.format "%02d:" row-num) byte-num byte (ipairs row)]
-                (faccumulate [chunk line bit-pos 0 7]
-                  (if (< 0  (-> (bit.lshift 1 (- 8 bit-pos 1))
-                                (bit.band byte 0xFF)))
-                    (.. chunk "█")
-                    (.. chunk " "))))]
-      (table.insert lines str)))
-  (-> (table.concat lines "\n") (print)))
-
-(fn half-block-draw [video-ram]
-  (let [all-bytes (read-bytes video-ram 0 (* (/ 64 8) 32))
+(fn half-block-draw [video-bytes {: width : height}]
+  (let [all-bytes video-bytes; (read-bytes video-ram 0 (* (/ 64 8) 32))
         ;; indexing by zero makes striding simpler
         bit-list (accumulate [all {:idx 0} _ byte (ipairs all-bytes)]
                    (do
@@ -50,8 +37,8 @@
                     (.. line (. chars (+ (* row (/ 64 1)) col 1)))))]
       (print (table.concat lines "\n")))))
 
-(fn braille-draw [video-ram]
-  (let [all-bytes (read-bytes video-ram 0 (* (/ 64 8) 32))
+(fn braille-draw [video-bytes {: width : height}]
+  (let [all-bytes video-bytes; (read-bytes video-ram 0 (* (/ 64 8) 32))
         ;; indexing by zero makes striding simpler
         bit-list (accumulate [all {:idx 0} _ byte (ipairs all-bytes)]
                    (do
@@ -106,6 +93,18 @@
                       [a b c] (.. line (string.char a b c)))))]
       (print (table.concat lines "\n")))))
 
+(fn block-draw [video-bytes {: width : height}]
+  (local chars [])
+  (let [lines (fcollect [row-num 0 (- height 1)]
+                (faccumulate [line "" i 0 (- (/ width 8) 1)]
+                  (let [byte (. video-bytes (+ 1 i (* row-num (/ width 8))))]
+                    (.. line (faccumulate [chunk "" bit-pos 0 7]
+                               (.. chunk
+                                   (if (< 0 (-> (bit.lshift 1 (- 8 bit-pos 1))
+                                                (bit.band byte 0xFF)))
+                                     "█" " ")))))))]
+    (-> (table.concat lines "\n")
+        (print))))
 
 ; (let [m (new)]
 ;   (m:write-index 0x0)
@@ -116,12 +115,17 @@
 ;   (block-draw m.video)
 ;   (braille-draw m.video)
 ;   )
+;; https://chip8.gulrak.net/#quirk11
+(var read-video-ram nil)
 
-(let [m (new)]
-  (m:load-rom "./chip8-test-suite/bin/3-corax+.ch8")
-  (for [i 1 180]
+(let [m (new {:devices {:video #(set read-video-ram $1)}})]
+  (m:load-rom "./chip8-test-suite/bin/1-chip8-logo.ch8")
+  ; (m:load-rom "./chip8-test-suite/bin/3-corax+.ch8")
+  ; (m:load-rom "./chip8-test-suite/bin/4-flags.ch8")
+  ; (m:load-rom "./chip8-test-suite/bin/5-quirks.ch8")
+  (for [i 1 5000]
     (m:step))
-  (block-draw m.video)
-  (half-block-draw m.video)
-  (braille-draw m.video))
+  (block-draw (read-video-ram))
+  (half-block-draw (read-video-ram))
+  (braille-draw (read-video-ram)))
 
