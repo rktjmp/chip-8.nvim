@@ -408,7 +408,11 @@
 (test :ld-vx-dt [m]
   "Store the current value of the delay timer in register VX"
   ;; FX07
-  nil)
+  (m.delay:set 0xAA 1)
+  (m:write-words 0x200 [0xF007 0x1202])
+  (== 0 (m:read-register 0))
+  (m:step)
+  (== 0xAA (m:read-register 0)))
 
 (test :ld-vx-k [m]
   "Wait for a keypress and store the result in register VX"
@@ -418,36 +422,105 @@
 (test :ld-dt-vx [m]
   "Set the delay timer to the value of register VX"
   ;; FX15
-  nil)
+  (m:write-register 0 4)
+  (m:write-words 0x200 [0xF015 0x1202])
+  (== 0 m.delay.t)
+  (m:step)
+  (== 4 m.delay.t)
+  (m:step (/ 1001 60))
+  (== 3 m.delay.t)
+  (m:step (/ 1001 60))
+  (== 2 m.delay.t)
+  (m:step (/ 1001 60))
+  (== 1 m.delay.t)
+  (m:step (/ 1001 60))
+  (== 0 m.delay.t)
+  (m:step (/ 1001 60))
+  (== 0 m.delay.t))
 
 (test :ld-st-vx [m]
   "Set the sound timer to the value of register VX"
   ;; FX18
-  nil)
+  (m:write-register 0 4)
+  (m:write-words 0x200 [0xF018 0x1202])
+  (== 0 m.sound.t)
+  (m:step)
+  (== 4 m.sound.t)
+  (m:step (/ 1001 60))
+  (== 3 m.sound.t)
+  (m:step (/ 1001 60))
+  (== 2 m.sound.t)
+  (m:step (/ 1001 60))
+  (== 1 m.sound.t)
+  (m:step (/ 1001 60))
+  (== 0 m.sound.t)
+  (m:step (/ 1001 60))
+  (== 0 m.sound.t))
 
 (test :add-i-vx [m]
   "Add the value stored in register VX to register I"
   ;; FX1E
-  nil)
+  (m:write-index 0x500)
+  (m:write-register 0 0xFF)
+  (m:write-words 0x200 [0xF01E])
+  (m:step)
+  (== 0x5FF (m:read-index)))
 
 (test :ld-f-vx [m]
   "Set I to the memory address of the sprite data corresponding to the hexadecimal digit stored in register VX"
   ;; FX29
-  nil)
+  (m:write-words 0x200 [0xF029 0x1200])
+  (m:write-register 0 0x0)
+  (m:step) (m:step)
+  (== (+ 0x18 0x0) (m:read-index))
+  (m:write-register 0 0x8)
+  (m:step) (m:step)
+  (== (+ 0x18 0x8) (m:read-index)))
 
 (test :ld-b-vx [m]
   "Store the binary-coded decimal equivalent of the value stored in register VX at addresses I, I + 1, and I + 2"
   ;; FX33
-  nil)
+  (m:write-index 0x500)
+  (m:write-register 0 0xFF)
+  (m:write-words 0x200 [0xF033 0x1200])
+  (m:step) (m:step)
+  (== [0x02 0x05 0x05] (m:read-bytes 0x500 3))
+
+  (m:write-register 0 0x0F)
+  (m:step) (m:step)
+  (== [0x00 0x01 0x05] (m:read-bytes 0x500 3))
+
+  (m:write-register 0 0x00)
+  (m:step) (m:step)
+  (== [0x00 0x00 0x00] (m:read-bytes 0x500 3)))
 
 (test :ld-i-vx [m]
   "Store the values of registers V0 to VX inclusive in memory starting at address I, set I to I + X + 1 after operation"
   ;; FX55
-  nil)
+  (m:write-index 0x500)
+  (m:write-register 0 0xF1)
+  (m:write-register 1 0xF2)
+  (m:write-register 2 0xF3)
+  (m:write-register 3 0xF4)
+  (m:write-register 4 0xF5)
+  (m:write-words 0x200 [0xF455])
+  (m:step)
+  (== [0xF1 0xF2 0xF3 0xF4 0xF5] (m:read-bytes 0x500 5))
+  (== (+ 0x500 4 1) (m:read-index)))
 
 (test :ld-vx-i [m]
   "Fill registers V0 to VX inclusive with the values stored in memory starting at address I, set I to I + X + 1 after operation"
   ;; FX65
-  nil)
+  (m:write-index 0x500)
+  (m:write-bytes (m:read-index) [0xF1 0xF2 0xF3 0xF4 0xF5])
+  (m:write-words 0x200 [0xF465])
+  (m:step)
+  (== 0xF1 (m:read-register 0))
+  (== 0xF2 (m:read-register 1))
+  (== 0xF3 (m:read-register 2))
+  (== 0xF4 (m:read-register 3))
+  (== 0xF5 (m:read-register 4))
+  (== 0x00 (m:read-register 5))
+  (== (+ 0x500 4 1) (m:read-index)))
 
 tests

@@ -4,6 +4,14 @@
 (local {: write-bytes : read-bytes
         : nibbles->word : word->nibbles} (require :chip8.memory))
 
+    (local bootloader [0x59 0x4f 0x55 0x20
+                       0x43 0x41 0x4e 0x20
+                       0x50 0x4c 0x41 0x59
+                       0x20 0x57 0x49 0x54
+                       0x48 0x20 0x55 0x53
+                       0x00 0x00 0x00 0x00])
+    (local font-mem-loc 0x18)
+
 (fn dump-memory [memory ?offset ?len]
   (let [start (or ?offset 0)
         end (- (+ start (or ?len memory.size)) 1)
@@ -290,65 +298,102 @@
 (fn SKP-VX []
   "Skip the following instruction if the key corresponding to the hex value currently stored in register VX is pressed"
   ;; EX9E
+  (error "keyboard not implemented")
   )
 
 (fn SKNP-VX []
   "Skip the following instruction if the key corresponding to the hex value currently stored in register VX is not pressed"
   ;; EXA1
+  (error "keyboard not implemented")
   )
 
-(fn LD-VX-DT []
+(fn LD-VX-DT [machine vx]
   "Store the current value of the delay timer in register VX"
   ;; FX07
-  )
+  (machine:write-register vx machine.delay.t)
+  (machine:inc-pc))
 
 (fn LD-VX-K []
   "Wait for a keypress and store the result in register VX"
   ;; FX0A
+  (error "keyboard not implemented")
   )
 
-(fn LD-DT-VX []
+(fn LD-DT-VX [machine vx]
   "Set the delay timer to the value of register VX"
   ;; FX15
-  )
+  (let [t (machine:read-register vx)]
+    (machine.delay:set t machine.rtc-ms)
+    (machine:inc-pc)))
 
-(fn LD-ST-VX []
+(fn LD-ST-VX [machine vx]
   "Set the sound timer to the value of register VX"
   ;; FX18
-  )
+  (let [t (machine:read-register vx)]
+    (machine.sound:set t machine.rtc-ms)
+    (machine:inc-pc)))
 
-(fn ADD-I-VX []
+(fn ADD-I-VX [machine vx]
   "Add the value stored in register VX to register I"
   ;; FX1E
-  )
+  (let [x (machine:read-register vx)
+        i (machine:read-index)]
+    (machine:write-index (+ i x))
+    (machine:inc-pc)))
 
-(fn LD-F-VX []
+(fn LD-F-VX [machine vx]
   "Set I to the memory address of the sprite data corresponding to the hexadecimal digit stored in register VX"
   ;; FX29
-  )
+  (let [c (machine:read-register vx)
+        addr (+ font-mem-loc c)]
+    (machine:write-index addr)
+    (machine:inc-pc)))
 
-(fn LD-B-VX []
+(fn LD-B-VX [machine vx]
   "Store the binary-coded decimal equivalent of the value stored in register VX at addresses I, I + 1, and I + 2"
   ;; FX33
-  )
+  (let [num (machine:read-register vx)
+        hunds (-> (/ num 100)
+                  (math.floor))
+        tens (-> (% num 100)
+                 (/ 10)
+                 (math.floor))
+        ones (-> (% num 10)
+                 (math.floor))]
+    (machine:write-bytes (machine:read-index) [hunds tens ones])
+    (machine:inc-pc)))
 
-(fn LD-I-VX []
+(fn LD-I-VX [machine vx]
   "Store the values of registers V0 to VX inclusive in memory starting at address I, set I to I + X + 1 after operation"
   ;; FX55
-  )
+  (let [addr (machine:read-index)
+        bytes (fcollect [i 0 vx]
+                (machine:read-register i))]
+    (machine:write-bytes addr bytes)
+    (machine:write-index (+ addr vx 1))
+    (machine:inc-pc)))
 
-(fn LD-VX-I []
+(fn LD-VX-I [machine vx]
   "Fill registers V0 to VX inclusive with the values stored in memory starting at address I, set I to I + X + 1 after operation"
   ;; FX65
-  )
+  (let [addr (machine:read-index)
+        bytes (machine:read-bytes addr (+ vx 1))]
+    (for [i 0 vx]
+      (machine:write-register i (. bytes (+ i 1))))
+    (machine:write-index (+ addr vx 1))
+    (machine:inc-pc)))
 
-(fn step [machine]
+(var last-ins 0)
+(fn fetch-decode-execute [machine]
   (let [[instruction] (machine:read-words machine.pc 1)
+        _ (set last-ins instruction)
         [n1 n2 n3 n4] (word->nibbles instruction)]
-    ; (print "executing ins" (bit.tohex instruction 4))
     (case (values n1 n2 n3 n4)
       (0x0 0x0 0xE 0x0) (CLS machine)
       (0x0 0x0 0xE 0xE) (RET machine)
+      ;; while 0NNN is supposed to execute "native machine instructions at nnn"
+      ;; it seems that modern implementations treat this the same as 1NNN.
+      (0x0 n1 n2 n3) (JP-NNN machine n1 n2 n3)
       (0x1 n1 n2 n3) (JP-NNN machine n1 n2 n3)
       (0x2 n1 n2 n3) (CALL-NNN machine n1 n2 n3)
       (0x3 vx n1 n2) (SE-VX-NN machine vx n1 n2)
@@ -366,25 +411,76 @@
       (0x8 vx vy 0x7) (SUBN-VX-VY machine vx vy)
       (0x8 vx vy 0xE) (SHL-VX-VY machine vx vy)
       (0x9 vx vy 0x0) (SNE-VX-VY machine vx vy)
-      ; (0x8 vx vy 0x6) (error)
       (0xA n1 n2 n3) (LD-I-NNN machine n1 n2 n3)
       (0xB n1 n2 n3) (JP-V0-NNN machine n1 n2 n3)
       (0xC vx n1 n2) (RND-VX-NN machine vx n1 n2)
       (0xD vx vy n1) (DRW-VX-VY-N machine vx vy n1)
+      (0xE vx 0x9 0xE) (SKP-VX machine vx)
+      (0xE vx 0xA 0x1) (SKNP-VX machine vx)
+      (0xF vx 0x0 0x7) (LD-VX-DT machine vx)
+      (0xF vx 0x0 0xA) (LD-VX-K machine vx)
+      (0xF vx 0x1 0x5) (LD-DT-VX machine vx)
+      (0xF vx 0x1 0x8) (LD-ST-VX machine vx)
+      (0xF vx 0x1 0xE) (ADD-I-VX machine vx)
+      (0xF vx 0x2 0x9) (LD-F-VX machine vx)
+      (0xF vx 0x3 0x3) (LD-B-VX machine vx)
+      (0xF vx 0x5 0x5) (LD-I-VX machine vx)
+      (0xF vx 0x6 0x5) (LD-VX-I machine vx)
 
       _ (error (fmt "unknown instruction 0x%s" (bit.tohex instruction 4))))))
 
+(fn tick-timers [machine]
+  (machine.delay:tick machine.rtc-ms)
+  (machine.sound:tick machine.rtc-ms))
 
-(fn new []
+(var suspended-ms 0) ;; todo this will delay the first steps
+(fn step [machine ?delta-ms]
+  ;; We run at a fixed rate (machine.hz), but we're stepped by an external
+  ;; system, so that system will pass in the ms time since we last stepped
+  ;; and its up to us to decide whether we should do anything or wait until
+  ;; we are called again.
+  ;;
+  ;; If no delta-ms is given, then we force a step at the threshold-ms rate.
+
+  (local threshold-ms (* (/ 1 machine.hz) 1000))
+  (local ?delta-ms (or ?delta-ms threshold-ms))
+  ;; We accumulate suspended-ms until its over some threshold then drain it.
+  ;; We may step multiple times if the deltas are high enough.
+  (set suspended-ms (+ suspended-ms ?delta-ms))
+
+  (when (<= threshold-ms suspended-ms)
+    (set machine.rtc-ms (+ machine.rtc-ms threshold-ms))
+    (tick-timers machine)
+    (fetch-decode-execute machine)
+    (set suspended-ms (math.min suspended-ms (- suspended-ms threshold-ms)))
+    (step machine 0)))
+
+(fn new-timer []
+  (var last-ms 0)
+  (var interval-ms (* (/ 1 60) 1000)) ;; timers are always 60hz
+  {:t 0x00
+   :set (fn [timer time now-ms]
+          (set last-ms now-ms)
+          (set timer.t (bit.band time 0xFF)))
+   :tick (fn [timer now-ms]
+           (when (< 0 timer.t)
+             (let [delta (- now-ms last-ms)]
+               (when (<= interval-ms delta)
+                 (let [steps (math.floor (/ delta interval-ms))]
+                   (set timer.t (math.max 0 (- timer.t steps)))
+                   (set last-ms (+ last-ms (* steps interval-ms))))))))})
+
+(λ new []
   "Create a blank CHIP8 machine"
   (let [{:new new-memory
          : read-bytes : write-bytes
          : read-words : write-words} (require :chip8.memory)
         machine {:pc 0x0200
                  ;; Stack starts 2 past stack head, but the first push will -2 it.
-                 :sp 0x0200 
+                 :sp 0x0200
                  ;; These could indeed just be a table, but by using
-                 ;; the memory interface we get some simpler type coercion.
+                 ;; the memory interface we get some simpler type coercion
+                 ;; and glory glory hallelujah, zero based indexes.
                  :v (new-memory 0xF)
                  :i (new-memory 0x2)
                  :memory (new-memory 0x1000)
@@ -392,9 +488,17 @@
                  ;; so we can compress our width by 8, but our height is one byte
                  ;; per pixel.
                  :video (new-memory (* (/ 64 8) 32))
-                 :mhz 500
+
+                 :rtc-ms 0x0
+
+                 :delay (new-timer)
+                 :sound (new-timer)
+
+                 :hz 500_000
                  :step step
 
+                 ;;TODO should reset machine, or really just not be a machine
+                 ;;method and create a new machine each time.
                  :load-rom (fn [m ...] (load-rom m ...))
 
                  :inc-pc (fn [m ?distance] (set m.pc (+ m.pc (* 2 (or ?distance 1)))))
@@ -409,15 +513,18 @@
 
                  :read-index (fn [m] (. (read-words m.i 0 1) 1))
                  :write-index (fn [m v] (write-words m.i 0 [v]))
-
                  :read-register (fn [m v] (. m.v.block v))
                  :write-register (fn [m v n] (tset m.v.block v n))
                  :write-bytes (fn [m ...] (write-bytes m.memory ...))
                  :read-bytes (fn [m ...] (read-bytes m.memory ...))
                  :read-words (fn [m ...] (read-words m.memory ...))
                  :write-words (fn [m ...] (write-words m.memory ...))}]
-    (machine:write-bytes 0 (font-bytes))
+
+    (machine:write-bytes 0x0 bootloader)
+    (machine:write-bytes font-mem-loc (font-bytes))
     machine))
 
 {: new
- : step}
+ : step
+ : dump-bytes
+ : dump-memory}
