@@ -11,6 +11,23 @@
                    0x48 0x20 0x55 0x53
                    0x00 0x00 0x00 0x00])
 
+(local font-bytes [0xF0 0x90 0x90 0x90 0xF0 ;; 0
+                   0x20 0x60 0x20 0x20 0x70 ;; 1
+                   0xF0 0x10 0xF0 0x80 0xF0 ;; 2
+                   0xF0 0x10 0xF0 0x10 0xF0 ;; 3
+                   0x90 0x90 0xF0 0x10 0x10 ;; 4
+                   0xF0 0x80 0xF0 0x10 0xF0 ;; 5
+                   0xF0 0x80 0xF0 0x90 0xF0 ;; 6
+                   0xF0 0x10 0x20 0x40 0x40 ;; 7
+                   0xF0 0x90 0xF0 0x90 0xF0 ;; 8
+                   0xF0 0x90 0xF0 0x10 0xF0 ;; 9
+                   0xF0 0x90 0xF0 0x90 0x90 ;; A
+                   0xE0 0x90 0xE0 0x90 0xE0 ;; B
+                   0xF0 0x80 0x80 0x80 0xF0 ;; C
+                   0xE0 0x90 0x90 0x90 0xE0 ;; D
+                   0xF0 0x80 0xF0 0x80 0xF0 ;; E
+                   0xF0 0x80 0xF0 0x80 0x80]) ;; F
+
 (local font-mem-loc 0x0050) ;; - 0x009f
 (local keyboard-mem-loc 0x100)
 
@@ -54,23 +71,6 @@
     (catch
       (nil e) (print e))))
 
-(fn font-bytes []
-  [0xF0 0x90 0x90 0x90 0xF0 ;; 0
-   0x20 0x60 0x20 0x20 0x70 ;; 1
-   0xF0 0x10 0xF0 0x80 0xF0 ;; 2
-   0xF0 0x10 0xF0 0x10 0xF0 ;; 3
-   0x90 0x90 0xF0 0x10 0x10 ;; 4
-   0xF0 0x80 0xF0 0x10 0xF0 ;; 5
-   0xF0 0x80 0xF0 0x90 0xF0 ;; 6
-   0xF0 0x10 0x20 0x40 0x40 ;; 7
-   0xF0 0x90 0xF0 0x90 0xF0 ;; 8
-   0xF0 0x90 0xF0 0x10 0xF0 ;; 9
-   0xF0 0x90 0xF0 0x90 0x90 ;; A
-   0xE0 0x90 0xE0 0x90 0xE0 ;; B
-   0xF0 0x80 0x80 0x80 0xF0 ;; C
-   0xE0 0x90 0x90 0x90 0xE0 ;; D
-   0xF0 0x80 0xF0 0x80 0xF0 ;; E
-   0xF0 0x80 0xF0 0x80 0x80]) ;; F
 
 (fn CALL-ML-NNN [machine]
   "Execute machine language subroutine at address NNN"
@@ -460,8 +460,8 @@
   ;;
   ;; If no delta-ms is given, then we force a step at the threshold-ms rate.
 
-  (local threshold-ms (* (/ 1 machine.hz) 1000))
-  (local ?delta-ms (or ?delta-ms threshold-ms))
+  (local threshold-ms (math.floor (/ 1000 machine.hz)))
+  (local ?delta-ms (math.floor (or ?delta-ms threshold-ms)))
   ;; We accumulate suspended-ms until its over some threshold then drain it.
   ;; We may step multiple times if the deltas are high enough.
   (set suspended-ms (+ suspended-ms ?delta-ms))
@@ -470,12 +470,12 @@
     (set machine.rtc-ms (+ machine.rtc-ms threshold-ms))
     (tick-timers machine)
     (fetch-decode-execute machine)
-    (set suspended-ms (math.min suspended-ms (- suspended-ms threshold-ms)))
+    (set suspended-ms (- suspended-ms threshold-ms))
     (step machine 0)))
 
 (fn new-timer []
   (var last-ms 0)
-  (var interval-ms (* (/ 1 60) 1000)) ;; timers are always 60hz
+  (var interval-ms (math.floor (* (/ 1 60) 1000))) ;; timers are always 60hz
   {:t 0x00
    :set (fn [timer time now-ms]
           (set last-ms now-ms)
@@ -511,7 +511,7 @@
         defaults {:devices {:keyboard #nil
                             :video #nil
                             :audio #nil}
-                  :mhz 500
+                  :mhz 0.5
                   :compatibility :CHIP8}
         opts (merge-table (or ?opts {}) defaults)
         machine {:pc 0x0200
@@ -533,7 +533,7 @@
                  :delay (new-timer)
                  :sound (new-timer)
 
-                 :hz 500_000
+                 :hz (* opts.mhz 1000)
                  :step step
 
                  ;;TODO should reset machine, or really just not be a machine
@@ -567,7 +567,8 @@
                             {:width 64 :height 32})))
 
     (machine:write-bytes 0x0 bootloader)
-    (machine:write-bytes font-mem-loc (font-bytes))
+    (machine:write-bytes font-mem-loc font-bytes)
+
     machine))
 
 {: new
