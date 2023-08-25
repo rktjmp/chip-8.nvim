@@ -157,6 +157,8 @@
   ;; 8XY1
   (let [x (machine:read-register vx)
         y (machine:read-register vy)]
+    (if machine.quirks.vf-reset
+      (machine:write-register 0xf 0))
     (machine:write-register vx (bit.bor x y))
     (machine:inc-pc)))
 
@@ -165,6 +167,8 @@
   ;; 8XY2
   (let [x (machine:read-register vx)
         y (machine:read-register vy)]
+    (if machine.quirks.vf-reset
+      (machine:write-register 0xf 0))
     (machine:write-register vx (bit.band x y))
     (machine:inc-pc)))
 
@@ -173,6 +177,8 @@
   ;; 8XY3
   (let [x (machine:read-register vx)
         y (machine:read-register vy)]
+    (if machine.quirks.vf-reset
+      (machine:write-register 0xf 0))
     (machine:write-register vx (bit.bxor x y))
     (machine:inc-pc)))
 
@@ -512,8 +518,14 @@
                             :video #nil
                             :audio #nil}
                   :mhz 0.5
-                  :compatibility :CHIP8}
+                  :compatibility :CHIP-8}
         opts (merge-table (or ?opts {}) defaults)
+        quirks (case opts.compatibility
+                 :CHIP-8 {:vf-reset true}
+                 :SCHIP {:vf-reset false}
+                 :XO-CHIP {:vf-reset false}
+                 _ (error (string.format "unknown compatibility %s"
+                                         opts.compatibility)))
         machine {:pc 0x0200
                  ;; Stack starts 2 past stack head, but the first push will -2 it.
                  :sp 0x0200
@@ -535,6 +547,8 @@
 
                  :hz (* opts.mhz 1000)
                  :step step
+
+                 :quirks {:vf-reset true}
 
                  ;;TODO should reset machine, or really just not be a machine
                  ;;method and create a new machine each time.
