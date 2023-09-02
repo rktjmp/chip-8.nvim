@@ -205,9 +205,11 @@
 (fn SHR-VX-VY [machine vx vy]
   "Store the value of register VY shifted right one bit in register VX, set VF to the least significant bit prior to the shift"
   ;; 8XY6
-  (let [y (machine:read-register vy)
-        lsb (bit.band y 0x01)
-        shifted (bit.rshift y 1)]
+  (let [val (if machine.quirks.shifting
+              (machine:read-register vx)
+              (machine:read-register vy))
+        lsb (bit.band val 0x01)
+        shifted (bit.rshift val 1)]
     (machine:write-register vx shifted)
     (machine:write-register 0xF lsb)
     (machine:inc-pc)))
@@ -225,9 +227,11 @@
 (fn SHL-VX-VY [machine vx vy]
   "Store the value of register VY shifted left one bit in register VX, set VF to the most significant bit prior to the shift"
   ;; 8XYE
-  (let [y (machine:read-register vy)
-        msb (bit.rshift y 7)
-        shifted (bit.band (bit.lshift y 1) 0xFF)]
+  (let [val (if machine.quirks.shifting
+              (machine:read-register vx)
+              (machine:read-register vy))
+        msb (bit.rshift val 7)
+        shifted (bit.band (bit.lshift val 1) 0xFF)]
     (machine:write-register vx shifted)
     (machine:write-register 0xF msb)
     (machine:inc-pc)))
@@ -252,8 +256,10 @@
   "Jump to address NNN + V0"
   ;; BNNN
   (let [base-addr (nibbles->word 0 n1 n2 n3)
-        v0 (machine:read-register 0)
-        addr (+ base-addr v0)]
+        vx-or-v0 (if machine.quirks.jumping
+                   (machine:read-register n1)
+                   (machine:read-register 0))
+        addr (+ base-addr vx-or-v0)]
     (set machine.pc (bit.band addr 0xFFFF))))
 
 (fn RND-VX-NN [machine vx n1 n2]
@@ -394,7 +400,8 @@
         bytes (fcollect [i 0 vx]
                 (machine:read-register i))]
     (machine:write-bytes addr bytes)
-    (machine:write-index (+ addr vx 1))
+    (if (not machine.quirks.memory)
+      (machine:write-index (+ addr vx 1)))
     (machine:inc-pc)))
 
 (fn LD-VX-I [machine vx]
@@ -521,9 +528,19 @@
                   :compatibility :CHIP-8}
         opts (merge-table (or ?opts {}) defaults)
         quirks (case opts.compatibility
-                 :CHIP-8 {:vf-reset true}
-                 :SCHIP {:vf-reset false}
-                 :XO-CHIP {:vf-reset false}
+                 ;; quirk names rom timendus chip-8 test suite flag rom
+                 :CHIP-8 {:vf-reset true
+                          :memory false
+                          :shifting false
+                          :jumping false}
+                 :SUPER-CHIP-1.0 {:vf-reset false
+                                  :memory true
+                                  :shifting true
+                                  :jumping true}
+                 :XO-CHIP {:vf-reset false
+                           :memory true
+                           :shifting true
+                           :jumping true}
                  _ (error (string.format "unknown compatibility %s"
                                          opts.compatibility)))
         machine {:pc 0x0200
@@ -548,7 +565,7 @@
                  :hz (* opts.mhz 1000)
                  :step step
 
-                 :quirks {:vf-reset true}
+                 :quirks quirks
 
                  ;;TODO should reset machine, or really just not be a machine
                  ;;method and create a new machine each time.
