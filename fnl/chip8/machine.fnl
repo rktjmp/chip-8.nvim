@@ -374,8 +374,8 @@
 (fn LD-F-VX [machine vx]
   "Set I to the memory address of the sprite data corresponding to the hexadecimal digit stored in register VX"
   ;; FX29
-  (let [c (machine:read-register vx)
-        addr (+ font-mem-loc c)]
+  (let [c (bit.band 0x0F (machine:read-register vx))
+        addr (+ font-mem-loc (* c 5))]
     (machine:write-index addr)
     (machine:inc-pc)))
 
