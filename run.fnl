@@ -118,12 +118,29 @@
 ;; https://chip8.gulrak.net/#quirk11
 (var read-video-ram nil)
 
-(let [m (new {:devices {:video #(set read-video-ram $1)}})]
-  (m:load-rom "./chip8-test-suite/bin/1-chip8-logo.ch8")
-  ; (m:load-rom "./chip8-test-suite/bin/3-corax+.ch8")
+(local [cpat-name cpat-bit]
+  ; [:CHIP-8 1]
+  ; [:SUPER-CHIP-1.0 2]
+  [:XO-CHIP 3]
+  )
+
+(let [m (new {:compatibility cpat-name
+              :devices {:video #(set read-video-ram $1)}})]
+  ;(m:load-rom "./chip8-test-suite/bin/1-chip8-logo.ch8")
+  ;(m:load-rom "./chip8-test-suite/bin/3-corax+.ch8")
   ; (m:load-rom "./chip8-test-suite/bin/4-flags.ch8")
   ; (m:load-rom "./chip8-test-suite/bin/5-quirks.ch8")
-  (for [i 1 5000]
+  ; (m:write-bytes 0x1FF [cpat-bit])
+
+  (m:write-words 0x200 [0x6001 0xF029 ;; i = "f of vx num"
+                        0x6000 0x6100 ;; 0 = x 1 = y
+                        0xD015 ;; draw
+                       
+                       
+                        0x1200
+                        
+                        ])
+  (for [i 1 5]
     (m:step))
   (block-draw (read-video-ram))
   (half-block-draw (read-video-ram))
