@@ -4,8 +4,7 @@
 
 # CHIP-8
 
-A [CHIP-8](https://en.wikipedia.org/wiki/CHIP-8) emulator for the Neovim video
-system.
+A [CHIP-8](https://en.wikipedia.org/wiki/CHIP-8) emulator for the Neovim Video Computer System.
 
 ## Usage
 
@@ -34,3 +33,6 @@ The emulator should be CHIP-8 compatible, SUPER-CHIP and XO-CHIP compatibility
 is incomplete as the emulator does not support video planes or scrolling but
 passes other tests from the
 [Timendus/chip8-test-suite](https://github.com/Timendus/chip8-test-suite).
+
+CHIP-8 games can be wonky and are not always clear which versions they expect
+to run under, or can just be outright broken.
